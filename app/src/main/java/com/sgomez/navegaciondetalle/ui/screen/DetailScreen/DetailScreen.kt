@@ -27,6 +27,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -51,15 +53,17 @@ import com.sgomez.navegaciondetalle.model.MediaItem
 import com.sgomez.navegaciondetalle.data.repositories.RemoteConectecition
 import com.sgomez.navegaciondetalle.data.repositories.model.Result
 import com.sgomez.navegaciondetalle.data.repositories.model.toMediaItem
+import com.sgomez.navegaciondetalle.ui.screen.ListaScreen.ListaViewModel
 
 import kotlinx.coroutines.launch
 
 @Composable
-fun DetailScreen(name: String,firestoreManager: FirestoreManager,auth: AuthManager,navController: NavController) {
+fun DetailScreen(name: String, viewModel: DetailViewModel, auth: AuthManager, navController: NavController) {
     // Estado para almacenar el resultado del Digimon
+    val uiState by viewModel.uiState.collectAsState()
     val digimonState = remember { mutableStateOf<Result?>(null) }
-    val favoritoState = remember { mutableStateOf<Favorito?>(null) }
-    val dislikeState = remember { mutableStateOf<Dislike?>(null) }
+    val favoritoState = uiState.favorito
+    val dislikeState =uiState.dislike
     val coroutineScope = rememberCoroutineScope()
 
     // Realizar la llamada a la API en un entorno asincrónico
@@ -69,129 +73,112 @@ fun DetailScreen(name: String,firestoreManager: FirestoreManager,auth: AuthManag
                 val digimon = RemoteConectecition.service.getDigimon(name).get(0)
                 val result = Result(digimon.name, digimon.img, digimon.level)
                 digimonState.value = result
+
             } catch (e: Exception) {
                 Log.e("DetailScreen", "Error fetching Digimon: ${e.message}")
             }
         }
     }
 
-    //favoritos
-    LaunchedEffect(name) {
-        coroutineScope.launch {
-            try {
-                val userId =auth.getCurrentUser()?.uid
-                val favorito = firestoreManager.getFavoritoByNombre(name, userId.toString())
-                favoritoState.value = favorito
-            } catch (e: Exception) {
-                Log.e("DetailScreen", "Error fetching favorite: ${e.message}")
-            }
-        }
-    }
-
-    //dislike
-    LaunchedEffect(name) {
-        coroutineScope.launch {
-            try {
-                val userId =auth.getCurrentUser()?.uid
-                val dislike = firestoreManager.getDislikeByNombre(name, userId.toString())
-                dislikeState.value = dislike
-            } catch (e: Exception) {
-                Log.e("DetailScreen", "Error fetching dislike: ${e.message}")
-            }
-        }
-    }
-
     fun toggleFavorito() {
         coroutineScope.launch {
-            val favorito = favoritoState.value
+            val favorito = uiState.favorito
             if (favorito != null) {
-                firestoreManager.deleteFavoritoById(favorito.id)
-                favoritoState.value = null
+                viewModel.deleteFavoritoById(favorito.id)
+                viewModel.updateFavorito(null)
             } else {
                 val newFavorito = Favorito(nombre = name,userId=auth.getCurrentUser()?.uid,favorito=true)
-                firestoreManager.addFavorito(newFavorito)
+                viewModel.addFavorito(newFavorito)
                 val userId =auth.getCurrentUser()?.uid
-                val favoritoNew = firestoreManager.getFavoritoByNombre(name, userId.toString())
-                favoritoState.value = favoritoNew
+                val favoritoNew = viewModel.getFavoritoByNombre(name, userId.toString())
+                viewModel.updateFavorito(favoritoNew)
             }
         }
     }
 
     fun toggleDislike() {
         coroutineScope.launch {
-            val dislike = dislikeState.value
+            val dislike = dislikeState
             if (dislike != null) {
-                firestoreManager.deleteDislikeById(dislike.id)
-                dislikeState.value = null
+                viewModel.deleteDislikeById(dislike.id)
+                viewModel.updateDislike(null)
             } else {
                 val newDislike = Dislike(nombre = name,userId=auth.getCurrentUser()?.uid,dislike=true)
-                firestoreManager.addDislike(newDislike)
+                viewModel.addDislike(newDislike)
                 val userId =auth.getCurrentUser()?.uid
-                val dislikeNew = firestoreManager.getDislikeByNombre(name, userId.toString())
-                dislikeState.value = dislikeNew
+                val dislikeNew = viewModel.getDislikeByNombre(name, userId.toString())
+                viewModel.updateDislike(dislikeNew)
             }
         }
     }
 
+        // Mostrar el contenido cuando los datos estén listos
+        digimonState.value?.let { result ->
+            val mediaItem = result.toMediaItem()
+            if (mediaItem != null) {
+                Log.i("Prueba","Dislike obtenido: $dislikeState")
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 24.dp, start = 8.dp, end = 8.dp)
 
-
-    // Mostrar el contenido cuando los datos estén listos
-    digimonState.value?.let { result ->
-        val mediaItem = result.toMediaItem()
-        if (mediaItem != null) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 24.dp, start = 8.dp, end = 8.dp)
-
-            ) {
-                IconButton(onClick = { navController.popBackStack() }) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Volver",
-                        modifier = Modifier.size(36.dp))
+                ) {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Volver",
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
                 }
-            }
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Column (horizontalAlignment = Alignment.CenterHorizontally){
-                    ImagenFull(mediaItem)
-                    TitleName(mediaItem)
-                    TitleLevel(mediaItem)
-                    Row {
-                        IconButton(onClick = { toggleFavorito() }) {
-                            // Cambiar el icono de acuerdo al estado de favorito
-                            val icon: ImageVector = if (favoritoState.value != null) {
-                                Icons.Filled.Favorite  // Corazón relleno
-                            } else {
-                                Icons.Outlined.FavoriteBorder  // Corazón vacío
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        ImagenFull(mediaItem)
+                        TitleName(mediaItem)
+                        TitleLevel(mediaItem)
+                        Row {
+                            IconButton(onClick = { toggleFavorito() }) {
+                                // Cambiar el icono de acuerdo al estado de favorito
+                                val icon: ImageVector = if (favoritoState != null) {
+                                    Icons.Filled.Favorite  // Corazón relleno
+                                } else {
+                                    Icons.Outlined.FavoriteBorder  // Corazón vacío
+                                }
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = "Favorito",
+                                    tint = Color.Red
+                                )
                             }
-                            Icon(imageVector = icon, contentDescription = "Favorito",tint = Color.Red)
+
+                            IconButton(onClick = { toggleDislike() }) {
+                                // Cambiar el icono de acuerdo al estado de dislike
+                                val icon: ImageVector = Icons.Filled.Details
+                                val color: Color = if (dislikeState != null) {
+                                    Color.Black
+                                } else {
+                                    Color.LightGray
+                                }
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = "Dislike",
+                                    tint = color
+                                )
+                            }
                         }
 
-                        IconButton(onClick = { toggleDislike() }) {
-                            // Cambiar el icono de acuerdo al estado de dislike
-                            val icon: ImageVector = Icons.Filled.Details
-                            val color: Color = if (dislikeState.value != null) {
-                                Color.Black
-                            } else {
-                                Color.LightGray
-                            }
-                            Icon(imageVector = icon, contentDescription = "Dislike",tint = color)
-                        }
                     }
 
                 }
 
             }
-
+        } ?: run {
+            // Mostrar un indicador de carga o mensaje de error mientras se cargan los datos
+            CircularProgressIndicator()
         }
-    } ?: run {
-        // Mostrar un indicador de carga o mensaje de error mientras se cargan los datos
-        CircularProgressIndicator()
-    }
 }
 
 @Composable

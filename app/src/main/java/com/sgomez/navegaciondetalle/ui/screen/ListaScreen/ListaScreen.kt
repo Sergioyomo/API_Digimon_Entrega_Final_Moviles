@@ -46,63 +46,46 @@ import androidx.compose.ui.unit.dp
 import coil.ImageLoader
 import coil.compose.rememberAsyncImagePainter
 import com.sgomez.navegaciondetalle.data.AuthManager
-import com.sgomez.navegaciondetalle.data.FirestoreManager
 import com.sgomez.navegaciondetalle.data.model.Dislike
 import com.sgomez.navegaciondetalle.data.model.Favorito
 import com.sgomez.navegaciondetalle.model.MediaItem
 import kotlinx.coroutines.launch
 
 @Composable
-fun ListaScreen(viewModel: ListaViewModel, firestoreManager: FirestoreManager, auth: AuthManager, navigateToDetail: (String) -> Unit) {
+fun ListaScreen(viewModel: ListaViewModel, auth: AuthManager, navigateToDetail: (String) -> Unit) {
 
+    val uiState by viewModel.uiState.collectAsState()
     val lista by viewModel.lista.observeAsState(emptyList())
-    val progressBar by viewModel.progressBar.observeAsState(false)
-    val favoritosState = remember { mutableStateOf<List<Favorito>>(emptyList()) }
-    val dislikesState = remember { mutableStateOf<List<Dislike>>(emptyList()) }
+    val favoritosState = uiState.favoritos
+    val dislikesState = uiState.dislikes
     val coroutineScope = rememberCoroutineScope()
-
-    //favoritos
-    LaunchedEffect(Unit) {
-        firestoreManager.getFavoritos().collect { lista ->
-            favoritosState.value = lista
-        }
-
-    }
-    //dislikes
-    LaunchedEffect(Unit) {
-        firestoreManager.getDislike().collect { lista ->
-            dislikesState.value = lista
-        }
-    }
-
-
 
     fun toggleFavorito(name:String) {
         coroutineScope.launch {
             val userId = auth.getCurrentUser()?.uid
 
             // Obtener la lista actual de favoritos
-            val favoritosActuales = favoritosState.value.toMutableList()
+            val favoritosActuales = favoritosState.toMutableList()
 
             // Buscar si el favorito ya está en la lista
             val favoritoExistente = favoritosActuales.find { it.nombre == name }
 
             if (favoritoExistente != null) {
                 // Si ya existe, eliminarlo de Firestore y de la lista
-                firestoreManager.deleteFavoritoById(favoritoExistente.id)
+                viewModel.deleteFavoritoById(favoritoExistente.id)
                 favoritosActuales.remove(favoritoExistente)
             } else {
                 // Si no existe, crearlo y agregarlo a Firestore
                 val nuevoFavorito = Favorito(nombre = name, userId = userId, favorito = true)
-                firestoreManager.addFavorito(nuevoFavorito)
+                viewModel.addFavorito(nuevoFavorito)
 
                 // Obtener el favorito recién agregado de Firestore con el ID generado
-                val favoritoNuevo = firestoreManager.getFavoritoByNombre(name, userId.toString())
+                val favoritoNuevo = viewModel.getFavoritoByNombre(name, userId.toString())
                 favoritoNuevo?.let { favoritosActuales.add(it) }
             }
 
             // Actualizar la lista de favoritos en la UI
-            favoritosState.value = favoritosActuales
+            viewModel.updateFavoritos(favoritosActuales)
         }
     }
 
@@ -111,31 +94,31 @@ fun ListaScreen(viewModel: ListaViewModel, firestoreManager: FirestoreManager, a
             val userId = auth.getCurrentUser()?.uid
 
             // Obtener la lista actual de dislikes
-            val dislikesActuales = dislikesState.value.toMutableList()
+            val dislikesActuales = dislikesState.toMutableList()
 
             // Buscar si el dislike ya está en la lista
             val dislikeExistente = dislikesActuales.find { it.nombre == name }
 
             if (dislikeExistente != null) {
                 // Si ya existe, eliminarlo de Firestore y de la lista
-                firestoreManager.deleteDislikeById(dislikeExistente.id)
+                viewModel.deleteDislikeById(dislikeExistente.id)
                 dislikesActuales.remove(dislikeExistente)
             } else {
                 // Si no existe, crearlo y agregarlo a Firestore
                 val nuevoDislike = Dislike(nombre = name, userId = userId, dislike = true)
-                firestoreManager.addDislike(nuevoDislike)
+                viewModel.addDislike(nuevoDislike)
 
                 // Obtener el favorito recién agregado de Firestore con el ID generado
-                val dislikeNuevo = firestoreManager.getDislikeByNombre(name, userId.toString())
+                val dislikeNuevo = viewModel.getDislikeByNombre(name, userId.toString())
                 dislikeNuevo?.let { dislikesActuales.add(it) }
             }
 
             // Actualizar la lista de favoritos en la UI
-            dislikesState.value = dislikesActuales
+            viewModel.updateDislikes(dislikesActuales)
         }
     }
 
-    if (progressBar) {
+    if(uiState.isLoading || uiState.isLoadingFavoritos || uiState.isLoadingDislikes){
         Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
@@ -160,7 +143,7 @@ fun ListaScreen(viewModel: ListaViewModel, firestoreManager: FirestoreManager, a
                 //modifier = Modifier.fillMaxSize()
             ) {
                 items(lista!!) { mediaItem ->
-                    MediaListItem(mediaItem, navigateToDetail, favoritosState.value, ::toggleFavorito, dislikesState.value, ::toggleDislike)
+                    MediaListItem(mediaItem, navigateToDetail, favoritosState, ::toggleFavorito, dislikesState, ::toggleDislike)
                 }
             }
         }

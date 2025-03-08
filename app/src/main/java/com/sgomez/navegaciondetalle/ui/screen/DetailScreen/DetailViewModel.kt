@@ -1,4 +1,4 @@
-package com.sgomez.navegaciondetalle.ui.screen.ListaScreen
+package com.sgomez.navegaciondetalle.ui.screen.DetailScreen
 
 import android.util.Log
 import androidx.lifecycle.LiveData
@@ -6,6 +6,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.sgomez.navegaciondetalle.data.AuthManager
 import com.sgomez.navegaciondetalle.data.FirestoreManager
 import com.sgomez.navegaciondetalle.data.model.Dislike
 import com.sgomez.navegaciondetalle.data.model.Favorito
@@ -14,57 +15,40 @@ import com.sgomez.navegaciondetalle.data.repositories.RemoteConectecition
 import com.sgomez.navegaciondetalle.data.repositories.model.Result
 import com.sgomez.navegaciondetalle.data.repositories.model.toMediaItem
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-class ListaViewModel(val firestoreManager: FirestoreManager): ViewModel() {
-    private val _lista: MutableLiveData<List<MediaItem>> = MutableLiveData()
-    val lista: LiveData<List<MediaItem>> = _lista
-
+class DetailViewModel(val firestoreManager: FirestoreManager,name: String,auth: AuthManager): ViewModel() {
     val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState
 
-    init {
-        _uiState.update { it.copy(isLoading = true,isLoadingFavoritos = true,isLoadingDislikes = true) }
-
-        viewModelScope.launch() {
-            val digimons = RemoteConectecition.service.getDigimonAll()
-            _lista.value = digimons.map {
-                val result = Result(it.name,it.img,it.level)
-                result.toMediaItem()
-            }
-            _uiState.update { it.copy(isLoading = false) }
-
-        }
+    init{
+        val userId =auth.getCurrentUser()?.uid.toString()
 
         viewModelScope.launch {
-            firestoreManager.getFavoritos().collect { lista ->
-                _uiState.update { uiState ->
-                    uiState.copy(
-                        favoritos = lista,
-                        isLoadingFavoritos = false
-                    )
-                }
+            try {
+                val favorito = firestoreManager.getFavoritoByNombre(name, userId)
+                _uiState.update { it.copy(favorito = favorito) }
+            } catch (e: Exception) {
+                Log.e("updateFavoritoDislike", "Error obteniendo favorito: ${e.message}", e)
             }
         }
 
         viewModelScope.launch {
-            firestoreManager.getDislike().collect { lista ->
-                _uiState.update { uiState ->
-                    uiState.copy(
-                        dislikes = lista,
-                        isLoadingDislikes = false
-                    )
-                }
+            try {
+                val dislike = firestoreManager.getDislikeByNombre(name, userId)
+                _uiState.update { it.copy(dislike = dislike) }
+            } catch (e: Exception) {
+                Log.e("updateFavoritoDislike", "Error obteniendo dislike: ${e.message}", e)
             }
         }
     }
 
-    fun updateFavoritos(nuevosFavorito: List<Favorito>) {
-        _uiState.update { it.copy(favoritos = nuevosFavorito) }
+    fun updateFavorito(nuevoFavorito: Favorito?) {
+        _uiState.update { it.copy(favorito = nuevoFavorito) }
     }
 
     fun addFavorito(favorito: Favorito) {
@@ -83,8 +67,8 @@ class ListaViewModel(val firestoreManager: FirestoreManager): ViewModel() {
     }
 
 
-    fun updateDislikes(nuevosDislikes: List<Dislike>) {
-        _uiState.update { it.copy(dislikes = nuevosDislikes) }
+    fun updateDislike(nuevoDislike: Dislike?) {
+        _uiState.update { it.copy(dislike = nuevoDislike) }
     }
 
     fun addDislike(dislike: Dislike) {
@@ -104,15 +88,12 @@ class ListaViewModel(val firestoreManager: FirestoreManager): ViewModel() {
 }
 
 data class UiState(
-    val dislikes: List<Dislike> = emptyList(),
-    val favoritos: List<Favorito> = emptyList(),
-    val isLoading: Boolean = false,
-    val isLoadingFavoritos: Boolean = false,
-    val isLoadingDislikes: Boolean = false
+    val dislike: Dislike? = null,
+    val favorito: Favorito? = null
 )
 
-class ListaViewModelFactory(private val firestoreManager: FirestoreManager): ViewModelProvider.Factory {
+class DetailViewModelFactory(private val firestoreManager: FirestoreManager,private val name: String,private val auth: AuthManager): ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return ListaViewModel(firestoreManager) as T
+        return DetailViewModel(firestoreManager,name,auth) as T
     }
 }

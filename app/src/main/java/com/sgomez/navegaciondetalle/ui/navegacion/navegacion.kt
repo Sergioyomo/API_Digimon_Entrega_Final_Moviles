@@ -9,6 +9,7 @@ import androidx.navigation.toRoute
 import com.sgomez.navegaciondetalle.data.AuthManager
 import com.sgomez.navegaciondetalle.data.FirestoreManager
 import com.sgomez.navegaciondetalle.ui.screen.DetailScreen.DetailScreen
+import com.sgomez.navegaciondetalle.ui.screen.DetailScreen.DetailViewModel
 import com.sgomez.navegaciondetalle.ui.screen.ListaScreen.ListaScreen
 import com.sgomez.navegaciondetalle.ui.screen.ListaScreen.ListaViewModel
 import com.sgomez.navegaciondetalle.ui.screen.LoginScreen
@@ -40,15 +41,16 @@ fun Navegacion(auth: AuthManager) {
             ) { navController.popBackStack() }
         }
         composable<Lista> {
-            val viewModel = ListaViewModel()
-            ListaScreen(viewModel,firestore,auth) { name ->
+            val viewModel = ListaViewModel(firestore)
+            ListaScreen(viewModel,auth) { name ->
                 navController.navigate(Detail(name))
             }
         }
         composable<Detail> { backStackEntry ->
             val detail = backStackEntry.toRoute<Detail>()
             val name = detail.name
-            DetailScreen(name,firestore,auth,navController)
+            val viewModel = DetailViewModel(firestore,name,auth)
+            DetailScreen(name,viewModel,auth,navController)
             
         }
     }
